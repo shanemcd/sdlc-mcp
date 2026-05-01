@@ -1,0 +1,30 @@
+# Example system-level config
+# Copy to /etc/sdlc-context/config.yml or set $SDLC_CONTEXT_CONFIG
+
+hierarchy:
+  levels: [company, org, team, repo]
+
+  company:
+    name: acme
+    sources:
+      - type: local
+        path: examples/content/company/
+
+  org:
+    name: platform
+    sources:
+      - type: local
+        path: examples/content/org/
+
+  teams:
+    api:
+      repos: [acme/api-gateway, acme/api-auth]
+      sources:
+        - type: local
+          path: examples/content/teams/api/
+
+    frontend:
+      repos: [acme/web-app, acme/design-system]
+      sources:
+        - type: local
+          path: examples/content/teams/frontend/
