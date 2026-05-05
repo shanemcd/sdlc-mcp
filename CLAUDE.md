@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-sdlc-context: an open-source MCP server that serves hierarchical organizational context to AI agents. The server resolves a configurable hierarchy (company > org > team > repo), reads content from pluggable sources (local directories, git repos), merges with "most specific wins" semantics, and serves the result via MCP tools.
+sdlc-mcp: an open-source MCP server that serves hierarchical organizational context to AI agents. The server resolves a configurable hierarchy (company > org > team > repo), reads content from pluggable sources (local directories, git repos), merges with "most specific wins" semantics, and serves the result via MCP tools.
 
 See [docs/design.md](docs/design.md) for the full design document.
 
@@ -15,7 +15,7 @@ See [docs/design.md](docs/design.md) for the full design document.
 uv sync
 
 # Run the server
-uv run sdlc-context serve
+uv run sdlc-mcp serve
 
 # Lint
 uvx ruff check .
@@ -27,26 +27,28 @@ uv run pytest
 
 ## Architecture
 
-**Config loading:** Three levels merged in order (system + user + repo). System config from `/etc/sdlc-context/config.yml` or `$SDLC_CONTEXT_CONFIG`. User config from `~/.config/sdlc-context/config.yml`. Repo config from `.sdlc/config.yml` (optional). Each level can add content sources, override settings, or extend the hierarchy.
+**Config loading:** A config file is a YAML list of named scopes. Each scope has a `name`, optional `sources`, optional `repos` filter, and optional `include` list of `file://` or `github://` URIs. Scopes are processed top to bottom. Includes are resolved recursively before the including scope, so included content is the base and later scopes override.
 
-**Hierarchy resolution:** Given a repo identifier, walk the config to find: repo -> team -> org -> company. Gather content sources at each level. The team/repo mapping is defined in the config's `teams` section.
+**Hierarchy resolution:** Given a repo identifier, filter scopes to those that apply (no `repos` filter, or repo name matches). The org prefix is stripped, so `ansible/awx` and `shanemcd/awx` both match a scope with `repos: [awx]`.
 
 **Content sources:** Pluggable adapters that read markdown files. `local` reads from a directory. `git` clones a repo and reads from a path within it.
 
 **Merging:** "Most specific wins." If the team level has `testing.md` and the org level also has `testing.md`, the team version is used. Content that only exists at one level passes through unchanged. Merging is by filename within a category, not by concatenation.
 
-**MCP tools:** `get_context(repo, task)` returns merged context. `get_conventions(repo, category)` returns a specific category. `get_hierarchy(repo)` shows the resolution chain for debugging.
+**MCP tools:** Content tools are auto-generated from markdown frontmatter (one tool per artifact). `get_workflows(repo)` returns available workflows. `get_hierarchy(repo)` shows the resolution chain for debugging.
 
 **Source layout:**
 
 ```
-src/sdlc_context/
+src/sdlc_mcp/
   __main__.py        # CLI entry point
-  server.py          # FastMCP server + MCP tool definitions
-  config.py          # Config loading + merging
+  server.py          # FastMCP server + dynamic tool registration
+  config.py          # Config loading, include resolution, scope merging
   hierarchy.py       # Hierarchy resolution engine
+  repo.py            # Shared git clone/cache helpers
+  workflows.py       # Workflow loading and merging
   sources/           # Pluggable content source adapters
-    __init__.py      # Source protocol
+    __init__.py      # Source protocol + frontmatter parsing
     local.py         # Local directory source
     git.py           # Git repo source
   merge.py           # Content merging logic
@@ -56,7 +58,7 @@ src/sdlc_context/
 
 - Use `uv` for all Python package management
 - Use proper `logging` module, never `print()`
-- Source code under `src/sdlc_context/`
+- Source code under `src/sdlc_mcp/`
 - Examples under `examples/`
 - The server must be org-agnostic. No hardcoded references to any specific company, org, or tool (Jira, AWX, etc.). All org-specific knowledge comes from config and content.
 - Config format is YAML
@@ -65,4 +67,4 @@ src/sdlc_context/
 
 ## Implementation Status
 
-Phase 1 (skeleton) is the current focus. See docs/design.md "Implementation Plan" for all phases.
+Phases 1-3 are complete (skeleton, git source, real content). Config includes, dynamic tool registration from frontmatter, workflow routing, and the scope-based config model are all implemented. See docs/design.md for the full design.

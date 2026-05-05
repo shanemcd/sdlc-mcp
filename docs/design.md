@@ -24,9 +24,9 @@ What makes it work for a specific org is the *config*: a private config that map
 The config itself is hierarchical, just like the content it serves:
 
 ```
-System config (/etc/sdlc-context/config.yml or container image)
+System config (/etc/sdlc-mcp/config.yml or container image)
   merged with
-User config (~/.config/sdlc-context/config.yml)
+User config (~/.config/sdlc-mcp/config.yml)
   merged with
 Repo config (.sdlc/config.yml, optional)
 ```
@@ -58,8 +58,8 @@ Building on MCP means the solution works with any MCP-capable agent (not just Cl
 ### Source Layout
 
 ```
-sdlc-context/
-  src/sdlc_context/
+sdlc-mcp/
+  src/sdlc_mcp/
     __main__.py        # CLI entry point (serve command)
     server.py          # FastMCP server, MCP tool definitions
     config.py          # Config loading + merging (system + user + repo)
@@ -86,137 +86,109 @@ The server is generic. It doesn't know about Jira, AWX, or any specific org. It 
 
 ### Config Format
 
-```yaml
-# Example: system-level config shipped in a container image
-# Lives at /etc/sdlc-context/config.yml or $SDLC_CONTEXT_CONFIG
-
-hierarchy:
-  levels: [company, org, team, repo]
-
-  company:
-    name: acme
-    sources:
-      - type: git
-        url: https://github.com/acme/standards.git
-        path: company/
-
-  org:
-    name: platform
-    sources:
-      - type: git
-        url: https://github.com/acme/engineering-handbook.git
-        path: standards/
-
-  teams:
-    api:
-      repos: [acme/api-gateway, acme/api-auth]
-      sources:
-        - type: git
-          url: https://github.com/acme/platform-standards.git
-          path: teams/api/
-
-    frontend:
-      repos: [acme/web-app, acme/design-system]
-      sources:
-        - type: git
-          url: https://github.com/acme/platform-standards.git
-          path: teams/frontend/
-```
+A config file is a YAML list of named scopes, processed top to bottom. Each scope has a `name`, optional `sources`, optional `repos` filter, and optional `include` list. Later scopes override earlier ones for same-name content files.
 
 ```yaml
-# Example: user-level config
-# Lives at ~/.config/sdlc-context/config.yml
+# Example: org config with includes and team scopes
 
-sources:
-  - type: local
-    path: ~/notes/coding-standards/
-    level: user
+- name: acme
+  include:
+    - file://company.yml
+  sources:
+    - type: local
+      path: content/company/
+
+- name: platform
+  sources:
+    - type: git
+      url: https://github.com/acme/engineering-handbook.git
+      path: standards/
+
+- name: api
+  repos: [api-gateway, api-auth]
+  sources:
+    - type: git
+      url: https://github.com/acme/platform-standards.git
+      path: teams/api/
+
+- name: frontend
+  repos: [web-app, design-system]
+  sources:
+    - type: git
+      url: https://github.com/acme/platform-standards.git
+      path: teams/frontend/
 ```
 
-```yaml
-# Example: repo-level config (optional)
-# Lives at .sdlc/config.yml in the repo
+Scopes with a `repos` filter only apply when the requested repo matches. The org prefix is stripped during matching, so `acme/api-gateway`, `fork/api-gateway`, and `api-gateway` all match `repos: [api-gateway]`.
 
-team: api
-
-sources:
-  - type: local
-    path: .sdlc/guides/
-    level: repo
-```
+Includes resolve `file://` (local paths, absolute or relative) and `github://` (clones via git) URIs. Included configs are processed before the including scope, so they provide the base that later scopes override.
 
 ### MCP Tools
 
+Content tools are auto-generated from markdown frontmatter at server startup. Each content file with YAML frontmatter (`name`, `description`) becomes a tool:
+
+```markdown
+---
+name: code-review
+description: "Code review methodology: 3-lens scoring, evidence gate"
+---
+# Code Review
+...
+```
+
+This registers as `get_code_review(repo)` with the description visible in the agent's tool list. The agent sees the full table of contents without a discovery call.
+
+Static tools:
+
 ```python
 @server.tool()
-def get_context(repo: str | None = None, task: str | None = None) -> str:
-    """Get merged organizational context for the current repo and task.
-
-    The server resolves the hierarchy (company > org > team > repo),
-    merges applicable standards with 'most specific wins', and returns
-    the result.
-
-    Args:
-        repo: Repository identifier (e.g., "acme/api-gateway"). Auto-detected
-              from git remote if not provided.
-        task: Optional task type (e.g., "implement-story", "code-review")
-              to filter context to what's relevant.
-    """
-
-@server.tool()
-def get_conventions(repo: str | None = None, category: str | None = None) -> str:
-    """Get conventions for a specific category (testing, jira, code-review, etc.).
-
-    Args:
-        repo: Repository identifier. Auto-detected if not provided.
-        category: Convention category to retrieve.
-    """
+def get_workflows(repo: str | None = None) -> str:
+    """Get available workflows for a repo.
+    Returns all workflows defined for this repo's hierarchy."""
 
 @server.tool()
 def get_hierarchy(repo: str | None = None) -> str:
-    """Show the resolved hierarchy for a repo: which team, org, company,
+    """Show the resolved hierarchy for a repo: which scopes apply
     and what content sources are active at each level.
-
-    Useful for debugging: 'why did the agent get this context?'
-    """
+    Useful for debugging: 'why did the agent get this context?'"""
 ```
 
 ### Content Resolution Flow
 
 ```
-Agent calls get_context(repo="acme/api-gateway")
+Agent calls get_code_review(repo="acme/api-gateway")
   |
   v
-Config merger loads: system config + user config + repo config (if exists)
+Config loaded: system config + user config + repo .sdlc/config.yml (if exists)
+Includes resolved recursively.
   |
   v
-Hierarchy resolver:
-  1. repo = "acme/api-gateway"
-  2. team = "api" (from registry in config)
-  3. org = "platform" (from config)
-  4. company = "acme" (from config)
+Scope filtering:
+  1. repo name = "api-gateway" (org prefix stripped)
+  2. Scopes without repos filter: acme, platform (apply to all)
+  3. Scopes with matching repos filter: api (repos: [api-gateway])
+  4. Scopes with non-matching repos filter: frontend (skipped)
   |
   v
-Source reader fetches content at each level:
-  - company: security-standards.md, docs-format.md
-  - org: architecture-principles.md, testing-strategy.md
-  - team/api: api-testing.md, openapi-conventions.md
-  - repo: (auto-discovered from repo itself, or from repo config)
+Source reader fetches content from each matching scope, in order:
+  - acme: security-standards.md, docs-format.md
+  - platform: architecture-principles.md, testing-strategy.md
+  - api: api-testing.md, openapi-conventions.md
   |
   v
 Merger combines with "most specific wins":
-  - If api team has testing.md AND org has testing.md, api team's wins
-  - If only org has architecture-principles.md, that's used as-is
+  - If api scope has testing.md AND platform scope has testing.md, api's wins
+  - If only platform has architecture-principles.md, that's used as-is
   |
   v
-Returns merged context to agent
+Returns the requested content file to agent
 ```
 
 ## SEP-2640 Compatibility (Skills Over MCP)
 
 The architecture is designed so that SEP-2640 support is an additive layer, not a rewrite. The core logic (load config, resolve hierarchy, merge content) is the same regardless of delivery mechanism.
 
-**Today:** Content is served via MCP tools (`get_context()`, `get_conventions()`).
+**Today:** Content is served via auto-generated MCP tools (one per content file) plus `get_workflows()` and `get_hierarchy()`.
 
 **When SEP-2640 lands:** The same server additionally registers `skill://{repo}/SKILL.md` as an MCP resource template. Calling `resources/read` on that URI runs the same hierarchy resolution and returns merged content as a skill resource. The `skill://index.json` well-known resource enumerates available contexts, and resource templates let hosts offer completion on repo names for unbounded catalogs. This gives automatic host-side discovery, progressive disclosure, and UI integration for free, without changing the resolution engine.
 
@@ -237,22 +209,24 @@ The architecture is designed so that SEP-2640 support is an additive layer, not 
 
 ## Implementation Plan
 
-### Phase 1: Skeleton
+### Phase 1: Skeleton (done)
 - Python project with `uv`, FastMCP server
 - Config loading and merging (system + user + repo)
 - Hierarchy resolution engine
-- `get_context()` and `get_hierarchy()` MCP tools
-- Local directory source adapter (simplest first)
+- Local directory source adapter
 - Sample config and content for testing
 
-### Phase 2: Git source adapter
+### Phase 2: Git source adapter (done)
 - Git repo cloning as a content source
-- Test with real repos as sources
+- Clone caching with pull-on-reuse
 
-### Phase 3: Real content
-- Write an org-specific system config (hierarchy registry, source pointers)
-- Populate initial content for 2-3 teams
-- Validate end-to-end: agent in a public repo gets correct merged context
+### Phase 3: Real content and config evolution (done)
+- Scope-based config model (YAML list of named scopes)
+- Config includes (`file://`, `github://`) with recursive resolution
+- Dynamic tool registration from markdown frontmatter
+- Workflow routing (`get_workflows` tool)
+- Repo name matching (org prefix stripped)
+- Content as individual artifact files with frontmatter contracts
 
 ### Phase 4: SEP-2640 skill:// resource layer
 - Register `skill://{repo}/SKILL.md` as an MCP resource template
@@ -263,4 +237,4 @@ The architecture is designed so that SEP-2640 support is an additive layer, not 
 ### Phase 5: Distribution
 - Container image integration
 - AGENTS.md template with "if available" pattern
-- README and docs for the open-source project
+- Open-source docs and onboarding

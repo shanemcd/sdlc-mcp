@@ -1,30 +1,25 @@
-# Example system-level config
-# Copy to /etc/sdlc-context/config.yml or set $SDLC_CONTEXT_CONFIG
+# Example config: a YAML list of named scopes, processed top to bottom.
+# Later scopes override earlier ones. Scopes with `repos` only apply
+# when the requested repo matches. Includes pull in external configs.
 
-hierarchy:
-  levels: [company, org, team, repo]
+- name: acme
+  sources:
+    - type: local
+      path: examples/content/company/
 
-  company:
-    name: acme
-    sources:
-      - type: local
-        path: examples/content/company/
+- name: platform
+  sources:
+    - type: local
+      path: examples/content/org/
 
-  org:
-    name: platform
-    sources:
-      - type: local
-        path: examples/content/org/
+- name: api
+  repos: [api-gateway, api-auth]
+  sources:
+    - type: local
+      path: examples/content/teams/api/
 
-  teams:
-    api:
-      repos: [acme/api-gateway, acme/api-auth]
-      sources:
-        - type: local
-          path: examples/content/teams/api/
-
-    frontend:
-      repos: [acme/web-app, acme/design-system]
-      sources:
-        - type: local
-          path: examples/content/teams/frontend/
+- name: frontend
+  repos: [web-app, design-system]
+  sources:
+    - type: local
+      path: examples/content/teams/frontend/
