@@ -67,14 +67,14 @@ def _make_content_tool(category: str, description: str):
         item = merge_content_for_category(hierarchy, category)
 
         if item is None:
-            available = [
-                s.name for s in config.scopes
-                if s.repos and _scope_has_category(s, category)
-            ]
+            available = []
+            for s in config.scopes:
+                if s.repos and _scope_has_category(s, category):
+                    available.append(f"{s.name} (repos: {', '.join(s.repos)})")
             if available:
                 return (
                     f"No matching content for {category!r}."
-                    f" Available for: {', '.join(available)}"
+                    f" Available for: {'; '.join(available)}"
                 )
             return f"No content found for {category!r}"
 
