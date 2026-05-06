@@ -2,14 +2,13 @@
 
 ## Context
 
-The AI SDLC initiative needs to deliver organizational context to AI agents working across 30+ repositories, with 200+ developers. This context exists at multiple levels:
+Organizations need to deliver organizational context to AI agents working across many repositories and teams. This context exists at multiple levels:
 
-- **Company-wide:** security standards, CDE processes, documentation format
-- **Org (AAP):** architecture principles, SDP/proposal process, testing strategy, Jira conventions
+- **Org-wide:** architecture principles, design process, testing strategy, issue tracking conventions
 - **Team:** component ownership, team testing patterns, review conventions
 - **Repo:** language, framework, directory structure, CI setup
 
-Different audiences need different subsets. Community contributors working on public upstream repos (AWX, Galaxy NG, EDA, etc.) should only see what's in the repo. Employees need the internal organizational context layered on top, without that context being visible in the repo itself.
+Different audiences need different subsets. Community contributors working on public upstream repos should only see what's in the repo. Employees need the internal organizational context layered on top, without that context being visible in the repo itself.
 
 ## The Idea
 
@@ -77,7 +76,7 @@ sdlc-mcp/
   CLAUDE.md
 ```
 
-The server is generic. It doesn't know about Jira, AWX, or any specific org. It knows how to:
+The server is generic. It doesn't know about any specific organization. It knows how to:
 1. Load and merge configs from system/user/repo levels
 2. Read content from pluggable sources (git repos, local dirs)
 3. Resolve a hierarchy (filter scopes by repo)
