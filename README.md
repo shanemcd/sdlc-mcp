@@ -1,6 +1,6 @@
 # sdlc-mcp
 
-An open-source MCP server that gives AI agents a table of contents for your entire platform.
+An open-source MCP server that gives AI agents a table of contents for your organization.
 
 ## Why
 
@@ -15,7 +15,7 @@ This server solves all three problems. Content is served on demand (the agent pu
 The config is a YAML list of named scopes, processed top to bottom. Each scope points at content sources. Scopes without a `repos` filter apply to all repos. Scopes with `repos` only apply when the requested repo matches.
 
 ```yaml
-- name: platform                      # org-wide, applies to all repos
+- name: acme                          # org-wide, applies to all repos
   sources:
     - type: local
       path: content/org/
@@ -27,7 +27,7 @@ The config is a YAML list of named scopes, processed top to bottom. Each scope p
       path: content/teams/api/
 ```
 
-If both `platform` and `api` have a `testing.md`, the `api` version wins for matching repos. Everything else inherits from the org level. The merge happens server-side. The agent never sees conflicting content, just the right answer.
+If both `acme` and `api` have a `testing.md`, the `api` version wins for matching repos. Everything else inherits from the org level. The merge happens server-side. The agent never sees conflicting content, just the right answer.
 
 Scopes can also include external configs via `file://` or `github://` URIs, so content can be spread across multiple repos, public and private.
 
